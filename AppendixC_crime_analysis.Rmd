@@ -1,0 +1,596 @@
+---
+title: "KC_analysis"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-03-20"
+---
+
+# Load in Data
+
+## KC School Data
+
+```{r}
+library(readxl)
+
+# Specify the file path
+file_path <- "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/KC_Schools.xlsx"
+
+# Read in the Excel file
+school_data <- read_excel(file_path)
+
+# View the first few rows of the data
+(school_data)
+
+summary(school_data)
+```
+
+## KC Crime Data
+
+```{r}
+
+# Specify the file path
+file_path <- "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/crimedata_clean.csv"
+
+crime_data_clean <- read.csv(file_path)
+
+# View the first few rows of the data
+head(crime_data_clean)
+```
+
+# Analyzing Crime Data
+
+```{r}
+summary(crime_data_clean)
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(ggplot2)
+library(maps)
+library(sp)
+library(geosphere)
+```
+
+## Has Crime Increased or Decreased?
+
+First seeing if total crime has increased or decreased from year to year
+
+```{r}
+crime_data <- crime_data_clean
+
+# Extract year from the Date column
+crime_data$Year <- as.integer(format(as.Date(crime_data$Date), "%Y"))
+
+# Calculate the increase in crime over the years
+crime_increase <- crime_data %>%
+  group_by(Year) %>%
+  summarise(total_crime = n()) %>%
+  mutate(crime_increase = total_crime - lag(total_crime))
+
+# Print the increase in crime over the years
+print(crime_increase)
+
+```
+Note 2024 is not complete
+
+```{r}
+
+# Plot the amount of crimes per month over the years
+crime_data$Month <- format(as.Date(crime_data$Date), "%m")
+crime_data$Month <- factor(crime_data$Month, levels = sprintf("%02d", 1:12))
+
+crime_per_month <- crime_data %>%
+  group_by(Year, Month) %>%
+  summarise(total_crime = n()) 
+
+# to remove april of 2024 because that data was not complete when I downloaded it
+crime_per_month <- head(crime_per_month, -1)
+
+ggplot(crime_per_month, aes(x = Month, y = total_crime, group = Year, color = factor(Year))) +
+  geom_line() +
+  labs(x = "Month", y = "Number of Crimes", title = "Crimes per Month Over the Years") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+crime_per_month$row_number <- 1:nrow(crime_per_month)
+
+# Plot the amount of crimes per month over the years
+ggplot(crime_per_month, aes(x = row_number, y = total_crime, color = factor(Year))) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Row Number", y = "Number of Crimes", title = "Crimes per Month Over the Years") +
+  scale_x_continuous(breaks = seq(1, nrow(crime_per_month), by = 12)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+
+adding the average on there for easy comparison
+
+```{r}
+average_crime_per_month <- crime_per_month %>%
+  group_by(Month) %>%
+  summarise(average_crime = mean(total_crime))
+
+average_crime_per_month$Year <- "Average"
+
+#crime_per_month
+#average_crime_per_month
+
+# Plot the amount of crimes per month over the years with average line
+ggplot(crime_per_month, aes(x = Month, y = total_crime, group = Year, color = factor(Year))) +
+  geom_line() +
+  geom_line(data = average_crime_per_month, aes(x = Month, y = average_crime, group = Year), 
+            color = "black", linetype = "dashed", size = 1) + 
+  labs(x = "Month", y = "Number of Crimes", title = "Crimes per Month Over the Years") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## Where is crime prevelent?
+
+```{r}
+# Identify areas with the most crime
+# only printing top 25
+top_areas <- crime_data %>%
+  group_by(Latitude, Longitude) %>%
+  summarise(total_crime = n()) %>%
+  arrange(desc(total_crime)) %>%
+  head(25)
+
+print(top_areas)
+```
+
+this isn't very useful without a visualization
+
+## Make a map
+
+Attempted making a map of the crime in R. However, I did not have a shape file for Kansas City and did not get the google API to work. So I will do this in Tableau
+
+For an example here is one of my attempts only looking at 1000 points
+
+```{r}
+world_map <- map_data("world")
+cropped_map <- subset(world_map, lat >= 37 & lat <= 40 & long >= -95 & long <= -93)
+
+cropped_data <- head(crime_data, 1000)
+
+ggplot() +
+  geom_polygon(data = cropped_map, aes(x = long, y = lat, group = group), fill = "white", color = "black") +
+  geom_point(data = cropped_data, aes(x = Longitude, y = Latitude), color = "red", size = 2) +
+  coord_fixed() +
+  theme_minimal()
+
+```
+
+### Creation of Dataframe for Tableau
+
+Making the Dataframe for the plot
+
+```{r}
+plot_df <- mutate(crime_data, Description = paste("Crime", Year, sep = " "))
+plot_df2 <- mutate(school_data, Description = paste(Level, "School", sep = " "))
+
+plotdf <- plot_df[, c("Description", "Latitude", "Longitude")]
+plotdf2 <- plot_df2[, c("Description", "Latitude", "Longitude")]
+
+```
+
+```{r}
+plotDF <- rbind(plotdf, plotdf2)
+
+head(plotDF)
+tail(plotDF)
+```
+
+```{r}
+write.csv(plotDF, "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/LL_plot.csv", row.names = FALSE)
+```
+
+
+
+## How Many Crimes are Near Each School
+
+
+```{r}
+# remove na
+crime_data <- crime_data[complete.cases(crime_data$Longitude, crime_data$Latitude), ]
+
+# getting the data in the right format for the function
+crime_sp <- crime_data %>% 
+  select(Longitude, Latitude) %>% 
+  SpatialPointsDataFrame(coords = ., data = crime_data)
+
+school_sp <- school_data %>% 
+  select(Longitude, Latitude) %>% 
+  SpatialPointsDataFrame(coords = ., data = school_data)
+```
+
+
+```{r}
+# the buffer is in meters thus this is about 1 mile away 
+buffer_dist <- 1609
+
+calculate_monthly_distances <- function(crime_data, school_data, buffer_dist) {
+  # empty matrix to store counts for each school, month, and year
+  num_schools <- nrow(school_data)
+  num_months <- 12
+  num_years <- length(unique(crime_data$Year)) - 1 #don't do 2024 because incomplete year
+  counts <- array(0, dim = c(num_schools, num_months, num_years))
+  
+  # each combination of year and month
+  for (year in unique(crime_data$Year)[1:(num_years)]) {
+    for (month in sprintf("%02d", 1:12)) {
+      # Subset crime_data for the current year and month
+      subset_crime <- subset(crime_data, Year == year & Month == month)
+      
+      # Calculate distances for the subset
+      distances <- sapply(1:nrow(school_data), function(i) {
+        dist <- distm(school_data[i, c("Longitude", "Latitude")], 
+                      subset_crime[, c("Longitude", "Latitude")], 
+                      fun = distGeo)
+        
+        sum(dist <= buffer_dist)
+      })
+      
+      # Store
+      counts[, as.integer(month), year - min(unique(crime_data$Year)) + 1] <- distances
+    }
+    # print year so we can see that we are making progress
+    print(year)
+  }
+  
+  # Return the counts matrix
+  return(counts)
+}
+
+distances_monthly <- calculate_monthly_distances(crime_data, school_data, buffer_dist)
+```
+
+now store into a dataframe
+
+```{r}
+years <- min(unique(crime_data$Year)) + 0:(dim(distances_monthly)[3] - 1)
+months <- sprintf("%02d", 1:12)
+
+result_df <- data.frame(school_data)
+
+# Loop over years and months
+for (year in years) {
+  for (month in months) {
+    # Extract counts for the current year and month
+    counts <- as.vector(distances_monthly[, as.integer(month), year - min(years) + 1])
+    
+    # Add counts as a new column to the data frame
+    col_name <- paste(month, "/", year, sep = "")
+    result_df[[col_name]] <- counts
+  }
+}
+
+head(result_df,1)
+
+```
+
+### Save Dataframe
+
+```{r}
+write.csv(result_df, "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/school_crimes.csv", row.names = FALSE)
+```
+
+
+## Regression Analysis!
+
+since, Time Series is out of the scope of this course I really wanted to look at some kind of regression on the data. My thoughts are if we look back at the graph made "Crimes per Month over the Years" there is a really consistent trend / shape of the line. It's a very strong pattern. I seams as though that if I can find an equation of that line then once you know the y-intercept or the number of crimes for January you then can essentially have a good prediction for the rest of the year. So this is my attempt to fit a regression on the average crime counts per year.
+
+```{r}
+average_crime_per_month
+```
+
+## Monthly
+
+Lets just show what linear would look like
+
+```{r}
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Month, 1, raw = TRUE), data = average_crime_per_month)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_month)
+
+# Calculate MSE
+residuals <- average_crime_per_month$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_month, aes(x = Month, y = average_crime)) +
+  geom_point(color = "blue", size = 3) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Month", y = "Average Crime", title = "Linear Regression") +
+  theme_minimal()
+
+```
+
+As you can see it does not fit the data very well
+so lets try a second degree polynomial regression
+
+```{r}
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Month, 2, raw = TRUE), data = average_crime_per_month)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_month)
+
+# Calculate MSE
+residuals <- average_crime_per_month$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_month, aes(x = Month, y = average_crime)) +
+  geom_point(color = "blue", size = 3) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Month", y = "Average Crime", title = "Second Degree Polynomial Regression") +
+  theme_minimal()
+
+```
+This is better but the degree that gives the shape that I am desiring is degree 6
+
+
+```{r}
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Month, 5, raw = TRUE), data = average_crime_per_month)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_month)
+
+# Calculate MSE
+residuals <- average_crime_per_month$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_month, aes(x = Month, y = average_crime)) +
+  geom_point(color = "blue", size = 3) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Month", y = "Average Crime", title = "Fifth Degree Polynomial Regression") +
+  theme_minimal()
+
+```
+
+## Weekly
+
+I feel like this isn't enough data with only 12 points so I want to update this to weekly?
+
+```{r}
+
+# Extract week and year from the date
+crime_data$Week <- format(as.Date(crime_data$Date), "%W")
+crime_data$Year <- format(as.Date(crime_data$Date), "%Y")
+
+# Group by year and week
+crime_per_week <- crime_data %>%
+  group_by(Year, Week) %>%
+  summarise(total_crime = n()) 
+
+# Calculate average crime per week
+average_crime_per_week <- crime_per_week %>%
+  group_by(Week) %>%
+  summarise(average_crime = mean(total_crime))
+
+average_crime_per_week$Year <- "Average"
+
+# Plot crimes per week over the years with average line
+ggplot(crime_per_week, aes(x = Week, y = total_crime, group = Year, color = factor(Year))) +
+  geom_line() +
+  geom_line(data = average_crime_per_week, aes(x = Week, y = average_crime, group = Year), color = "black", linetype = "dashed", size = 1) + # Add average line
+  labs(x = "Week", y = "Number of Crimes", title = "Crimes per Week Over the Years") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+Well because the first and last week are not always a complete week lets remove those from our data.
+
+```{r}
+# Remove first and last week of data
+average_crime_per_week_c <- average_crime_per_week %>%
+  filter(Week != min(Week), Week != max(Week))
+crime_per_week_c <- crime_per_week %>%
+  filter(Week != min(Week), Week != max(Week))
+
+# Plot crimes per week over the years with adjusted x-axis
+ggplot(crime_per_week_c, aes(x = as.numeric(Week), y = total_crime, group = Year, color = factor(Year))) +
+  geom_line() +
+  geom_line(data = average_crime_per_week_c, aes(x = as.numeric(Week), y = average_crime, group = Year), color = "black", linetype = "dashed", size = 1) + # Add average line
+  labs(x = "Week", y = "Number of Crimes", title = "Crimes per Week Over the Years") +
+  scale_x_continuous(breaks = seq(min(as.numeric(crime_per_week_c$Week)), max(as.numeric(crime_per_week_c$Week)), by = 4)) + # Adjust x-axis ticks
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+Now because this is very variable you can see how the average line is pretty smooth. It also interesting to me because when looking month to month we saw alot more variation. Also note how large the scale is
+
+Lets look at just the average
+
+```{r}
+ggplot(average_crime_per_week_c, aes(x = as.numeric(Week), y = average_crime)) +
+  geom_line(color = "black", size = 1) + # Add average line
+  labs(x = "Week", y = "Average Number of Crimes", title = "Average Crimes per Week Over the Years") +
+  scale_x_continuous(breaks = seq(min(as.numeric(average_crime_per_week_c$Week)), max(as.numeric(average_crime_per_week_c$Week)), by = 5)) + # Adjust x-axis ticks
+  theme_minimal()
+
+```
+First notice the scale change
+Second this is definitely not linear. Lets run the same models on it
+
+```{r}
+# needs to be a factor not a character
+average_crime_per_week_c$Week <- factor(average_crime_per_week_c$Week)
+
+
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Week, 1, raw = TRUE), data = average_crime_per_week_c)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_week_c)
+
+# Calculate MSE
+residuals <- average_crime_per_week_c$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_week_c, aes(x = Week, y = average_crime)) +
+  geom_point(color = "blue", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Linear Regression") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```
+
+```{r}
+# needs to be a factor not a character
+average_crime_per_week_c$Week <- factor(average_crime_per_week_c$Week)
+
+
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Week, 2, raw = TRUE), data = average_crime_per_week_c)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_week_c)
+
+# Calculate MSE
+residuals <- average_crime_per_week_c$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_week_c, aes(x = Week, y = average_crime)) +
+  geom_point(color = "blue", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Second Degress Polynomial Regression") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```
+
+
+
+```{r}
+# needs to be a factor not a character
+average_crime_per_week_c$Week <- factor(average_crime_per_week_c$Week)
+
+
+# Fit a second-degree polynomial regression
+model <- lm(average_crime ~ poly(Week, 5, raw = TRUE), data = average_crime_per_week_c)
+
+# Summary of the model
+summary(model)
+
+predicted_values <- predict(model, newdata = average_crime_per_week_c)
+
+# Calculate MSE
+residuals <- average_crime_per_week_c$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(average_crime_per_week_c, aes(x = Week, y = average_crime)) +
+  geom_point(color = "blue", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Fifth Degree Polynomial Regression") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```
+
+## Early Predictions
+
+```{r}
+data2024 <- subset(crime_per_week, Year == "2024" )
+
+data2024$Week <- factor(data2024$Week)
+data2024$total_crime <- as.double(data2024$total_crime)
+data2024 <- data2024 %>%
+  rename(average_crime = total_crime)
+
+predicted_values <- predict(model, newdata = data2024)
+
+# Calculate MSE
+residuals <- data2024$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(data2024, aes(x = Week, y = average_crime)) +
+  geom_point(color = "purple", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Fifth Degree Polynomial Regression - 2024 Data") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```
+```{r}
+# Extracting data for the first week of 2023
+first_week_2023 <- subset(crime_per_week_c, Year == "2023" & Week == "01")
+data2023 <- subset(crime_per_week_c, Year == "2023" )
+
+data2023$Week <- factor(data2023$Week)
+data2023$total_crime <- as.double(data2023$total_crime)
+data2023 <- data2023 %>%
+  rename(average_crime = total_crime)
+
+predicted_values <- predict(model, newdata = data2023)
+
+# Calculate MSE
+residuals <- data2023$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(data2023, aes(x = Week, y = average_crime)) +
+  geom_point(color = "purple", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Fifth Degree Polynomial Regression - 2023 Data") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```
+
+```{r}
+data2022 <- subset(crime_per_week_c, Year == "2022" )
+
+data2022$Week <- factor(data2022$Week)
+data2022$total_crime <- as.double(data2022$total_crime)
+data2022 <- data2022 %>%
+  rename(average_crime = total_crime)
+
+predicted_values <- predict(model, newdata = data2022)
+
+# Calculate MSE
+residuals <- data2022$average_crime - predicted_values
+mse <- mean(residuals^2)
+mse
+
+ggplot(data2022, aes(x = Week, y = average_crime)) +
+  geom_point(color = "purple", size = 2) +  # Plot data points as blue dots
+  geom_line(aes(y = predicted_values, group = 1), color = "red", size = 1) +  # Add regression line
+  labs(x = "Week", y = "Average Crime", title = "Fifth Degree Polynomial Regression - 2022 Data") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1))
+
+```

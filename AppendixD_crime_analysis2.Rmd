@@ -1,0 +1,351 @@
+---
+title: "crime_analysis2"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-03-27"
+---
+
+# Load in Data
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+```
+
+```{r}
+
+# Specify the file path
+file_path <- "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/KC_Schools.xlsx"
+
+# Read in the Excel file
+school_data <- read_excel(file_path)
+
+# View the first few rows of the data
+(school_data)
+```
+
+
+```{r}
+
+# Specify the file path
+file_path <- "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/crimedata_clean.csv"
+
+crime_data_clean <- read.csv(file_path)
+
+# View the first few rows of the data
+head(crime_data_clean)
+```
+
+
+```{r}
+
+# Specify the file path
+file_path <- "C:/Users/jans7/OneDrive - Marquette University/SP24/COSC 6510 - Data Intelligence/school_crimes.csv"
+
+school_crimes <- read.csv(file_path)
+
+# View the first few rows of the data
+head(school_crimes)
+```
+
+
+
+# KC Schools Analysis 
+
+## Has Crime increased or decreased near Schools?
+
+```{r}
+head(school_crimes)
+```
+
+Changing the orientation of the data so it makes it easier for analysis
+
+```{r}
+start_date <- as.Date("2015-01-01")
+end_date <- as.Date("2023-12-31")
+months <- seq(start_date, end_date, by = "month")
+
+year_month_df <- data.frame(Year = format(months, "%Y"), Month = format(months, "%B"))
+
+# Transpose the dataframe
+transposed_df <- t(school_crimes[, -c(1:8)])  # Exclude the first column (school names) before transposing
+colnames(transposed_df) <- school_crimes[, 2]
+transposed_df <- as.data.frame(transposed_df)
+final_df <- cbind(year_month_df, transposed_df)
+
+head(final_df)
+tail(final_df)
+
+```
+
+fixing format of columns
+
+```{r}
+# Convert Year and Month columns to numeric
+final_df$Year <- as.numeric(final_df$Year)
+month_mapping <- c("January" = 1, "February" = 2, "March" = 3, "April" = 4,
+                   "May" = 5, "June" = 6, "July" = 7, "August" = 8,
+                   "September" = 9, "October" = 10, "November" = 11, "December" = 12)
+final_df$Month <- month_mapping[final_df$Month]
+```
+
+
+```{r}
+# to make the plot look good can only do 1 school at a time
+
+school_name <- "Central High School"  # Replace with the desired school name
+
+
+school_df <- final_df[, c("Year", "Month", school_name)]
+
+# Plot the data for the selected school
+ggplot(school_df, aes(x = Month, y = !!rlang::sym(school_name), color = factor(Year))) +
+  geom_line() +
+  labs(x = "Month", y = "Number of Crimes", title = paste("Crimes per Month for", school_name)) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+now lets plot average as well as a confidence interval just so you can see if there has been a change
+
+```{r}
+# to make the plot look good can only do 1 school at a time
+school_name <- "Central High School"  # Replace with the desired school name
+school_df <- final_df[, c("Year", "Month", school_name)]
+
+# Calculate average and standard deviation across all years
+summary_stats <- school_df %>%
+  group_by(Month) %>%
+  summarise(avg = mean(!!rlang::sym(school_name)), 
+            sd = sd(!!rlang::sym(school_name)),
+            school = school_name)
+
+# Plot 
+ggplot() +
+  geom_line(data = school_df, aes(x = Month, y = !!rlang::sym(school_name), color = factor(Year))) +
+  geom_line(data = summary_stats, aes(x = Month, y = avg, group = school), color = "black", linetype = "dashed", size = 1) + # Add average line
+  geom_ribbon(data = summary_stats, aes(x = Month, ymin = avg - sd, ymax = avg + sd, group = school), fill = "grey70", alpha = 0.3) + # Add confidence interval
+  labs(x = "Month", y = "Number of Crimes", title = paste("Crimes per Month for", school_name)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(breaks = 1:12) + # Set x-axis tick marks from 1 to 12
+  scale_color_discrete(name = "Year") # Customize legend label
+```
+now looking at two other schools for comparison
+
+```{r}
+# to make the plot look good can only do 1 school at a time
+school_name <- "Border Star Montessori School"  # Replace with the desired school name
+school_df <- final_df[, c("Year", "Month", school_name)]
+
+# Calculate average and standard deviation across all years
+summary_stats <- school_df %>%
+  group_by(Month) %>%
+  summarise(avg = mean(!!rlang::sym(school_name)), 
+            sd = sd(!!rlang::sym(school_name)),
+            school = school_name)
+
+# Plot 
+ggplot() +
+  geom_line(data = school_df, aes(x = Month, y = !!rlang::sym(school_name), color = factor(Year))) +
+  geom_line(data = summary_stats, aes(x = Month, y = avg, group = school), color = "black", linetype = "dashed", size = 1) + # Add average line
+  geom_ribbon(data = summary_stats, aes(x = Month, ymin = avg - sd, ymax = avg + sd, group = school), fill = "grey70", alpha = 0.3) + # Add confidence interval
+  labs(x = "Month", y = "Number of Crimes", title = paste("Crimes per Month for", school_name)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(breaks = 1:12) + # Set x-axis tick marks from 1 to 12
+  scale_color_discrete(name = "Year") # Customize legend label
+```
+
+```{r}
+# to make the plot look good can only do 1 school at a time
+school_name <- "Manual Career and Technical Center"  # Replace with the desired school name
+school_df <- final_df[, c("Year", "Month", school_name)]
+
+# Calculate average and standard deviation across all years
+summary_stats <- school_df %>%
+  group_by(Month) %>%
+  summarise(avg = mean(!!rlang::sym(school_name)), 
+            sd = sd(!!rlang::sym(school_name)),
+            school = school_name)
+
+# Plot 
+ggplot() +
+  geom_line(data = school_df, aes(x = Month, y = !!rlang::sym(school_name), color = factor(Year))) +
+  geom_line(data = summary_stats, aes(x = Month, y = avg, group = school), color = "black", linetype = "dashed", size = 1) + # Add average line
+  geom_ribbon(data = summary_stats, aes(x = Month, ymin = avg - sd, ymax = avg + sd, group = school), fill = "grey70", alpha = 0.3) + # Add confidence interval
+  labs(x = "Month", y = "Number of Crimes", title = paste("Crimes per Month for", school_name)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_x_continuous(breaks = 1:12) + # Set x-axis tick marks from 1 to 12
+  scale_color_discrete(name = "Year") # Customize legend label
+```
+
+# Total
+
+## Which Schools Have the Most Crime Near them
+
+```{r}
+
+# to store the results
+top_schools <- data.frame()
+
+
+for (year in unique(final_df$Year)) {
+  # Filter data for the current year
+  year_data <- filter(final_df, Year == year)
+  
+  # Sum the crimes for each school
+  year_sum <- year_data %>%
+    summarise(across(3:38, sum)) %>%
+    melt(id.vars = NULL, variable.name = "School", value.name = "Total_Crimes") %>%
+    arrange(desc(Total_Crimes))
+  
+  # Select the top 3 schools
+  top_3 <- year_sum[1:3, ]
+  top_3$Year <- year
+  
+  top_schools <- bind_rows(top_schools, top_3)
+}
+
+print(top_schools)
+```
+
+Lets now visualize this
+
+```{r}
+ggplot(top_schools, aes(x = as.factor(Year), y = Total_Crimes, fill = School)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(x = "Year", y = "Total Number of Crimes", title = "Top 3 Schools with Most Crime Each Year") +
+  scale_fill_brewer(palette = "Set3") + 
+  theme_minimal() +
+  theme(legend.title = element_blank())  
+```
+This is very useful information 
+
+
+## Which Schools Have the Least Crime Near them
+
+```{r}
+
+# to store the results
+bot_schools <- data.frame()
+
+
+for (year in unique(final_df$Year)) {
+  # Filter data for the current year
+  
+  year_data <- filter(final_df, final_df$Year == year)
+  # Sum the crimes for each school
+  year_sum <- year_data %>%
+    summarise(across(3:38, sum)) %>%
+    melt(id.vars = NULL, variable.name = "School", value.name = "Total_Crimes") %>%
+    arrange(Total_Crimes)
+  
+  # Select the bottom 3 schools
+  bot_3 <- year_sum[1:3, ]
+  bot_3$Year <- year
+  
+  bot_schools <- bind_rows(bot_schools, bot_3)
+}
+
+```
+
+Lets now visualize this
+
+```{r}
+ggplot(bot_schools, aes(x = as.factor(Year), y = Total_Crimes, fill = School)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(x = "Year", y = "Total Number of Crimes", title = "Bottom 3 Schools with Most Crime Each Year") +
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() +
+  theme(legend.title = element_blank())  
+```
+
+
+# Average
+
+## Which Schools Have the Most Crime Near them
+
+```{r}
+
+# to store the results
+top_schools <- data.frame()
+
+
+for (year in unique(final_df$Year)) {
+  # Filter data for the current year
+  year_data <- filter(final_df, Year == year)
+  
+  # Sum the crimes for each school
+  year_sum <- year_data %>%
+    summarise(across(3:38, mean)) %>%
+    melt(id.vars = NULL, variable.name = "School", value.name = "Total_Crimes") %>%
+    arrange(desc(Total_Crimes))
+  
+  # Select the top 3 schools
+  top_3 <- year_sum[1:3, ]
+  top_3$Year <- year
+  
+  top_schools <- bind_rows(top_schools, top_3)
+}
+
+```
+
+Lets now visualize this
+
+```{r}
+ggplot(top_schools, aes(x = as.factor(Year), y = Total_Crimes, fill = School)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(x = "Year", y = "Average Number of Crimes Per Month", title = "Top 3 Schools with Most Crime Each Year") +
+  scale_fill_brewer(palette = "Set3") + 
+  theme_minimal() +
+  theme(legend.title = element_blank())  
+```
+This is very useful information 
+
+
+## Which Schools Have the Least Crime Near them
+
+```{r}
+
+# to store the results
+bot_schools <- data.frame()
+
+
+for (year in unique(final_df$Year)) {
+  # Filter data for the current year
+  
+  year_data <- filter(final_df, final_df$Year == year)
+  # Sum the crimes for each school
+  year_sum <- year_data %>%
+    summarise(across(3:38, mean)) %>%
+    melt(id.vars = NULL, variable.name = "School", value.name = "Total_Crimes") %>%
+    arrange(Total_Crimes)
+  
+  # Select the bottom 3 schools
+  bot_3 <- year_sum[1:3, ]
+  bot_3$Year <- year
+  
+  bot_schools <- bind_rows(bot_schools, bot_3)
+}
+
+```
+
+Lets now visualize this
+
+```{r}
+ggplot(bot_schools, aes(x = as.factor(Year), y = Total_Crimes, fill = School)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(x = "Year", y = "Average Number of Crimes Per Month", title = "Bottom 3 Schools with Most Crime Each Year") +
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() +
+  theme(legend.title = element_blank())  
+```
+
+
+
