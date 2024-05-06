@@ -19,3 +19,10 @@ Assignment Criteria:
   - Statement of weaknesses of analysis and state justification for performing analyses
 
 Contents:
+- Readme.txt: Description that was given to the professor when I submitted the contents of my project
+- BI Roadmap: A visualization of the plan for the project
+- Concept Map: A visualization discussing the expected deliverables of the project
+- Project Brief: A presentation given to talk about the plan of the project
+  - Video of Presentation: https://youtu.be/jNg4zUdw7Js
+- Final Paper: This is a thorough paper on what the goals were, how they were accomplished, and the results
+- Appendices: These are my work for the project and are explained in greater detail in the Final Paper
