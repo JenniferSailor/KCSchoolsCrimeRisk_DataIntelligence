@@ -5,7 +5,7 @@ FinalPaper_Sailor.pdf
 References:
 
 2: [folder] Crime_Data_folder
-	This is of all the crime data from Data KC
+	This is not included but can be downloaded from https://data.kcmo.org/Crime
 
 Appendices:
 
