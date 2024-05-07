@@ -3,7 +3,7 @@ Date:
 January 2024 - May 2024
 
 Keywords:
-Business Intelligence, Data Analysis, Crime, Schools
+Business Intelligence, Data Analysis, Crime, Schools, RStudio
 
 Description:
 In Business intelligence Class we were individual in charge of creating a Business Intelligence project of our interest. I choose to do a crime risk analysis project using open-source Kansas City Crime Data.
